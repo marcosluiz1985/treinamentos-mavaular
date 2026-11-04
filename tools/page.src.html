@@ -303,7 +303,7 @@ function viewAgenda(){
     <div class="cal">
       <div class="cal-head">
         <div class="nav"><button class="btn" data-act="prev" aria-label="Mês anterior">‹</button><h2>${MESES[m]} ${y}</h2><button class="btn" data-act="next" aria-label="Próximo mês">›</button><button class="btn" data-act="hoje">Hoje</button></div>
-        ${S.canWrite?`<button class="btn primary" data-act="novo">+ Agendar treinamento</button>`:""}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${!PORTAL?`<a class="btn" href="https://treinamentos-mavaular.netlify.app" target="_blank" rel="noopener">Abrir portal</a>`:""}${S.mcp&&S.canWrite?`<button class="btn" data-act="portal" ${S.portalBusy?"disabled":""}>${S.portalBusy?"Enviando…":"Atualizar portal"}</button>`:""}${S.canWrite?`<button class="btn primary" data-act="novo">+ Agendar treinamento</button>`:""}</div>
       </div>
       <div class="grid7">${DOW.map(d=>`<div class="dow">${d}</div>`).join("")}${cells}</div>
       <p class="note" style="margin:8px 0 0">${PORTAL?"Clique num treinamento para ver detalhes, participantes e materiais para baixar.":"Clique num dia para agendar um encontro nessa data. Clique num treinamento para ver detalhes, chamada e folha de assinatura."}</p>
@@ -440,6 +440,13 @@ async function baixarPortal(i){
   const t=cur(); const m=(t&&t.materiais||[])[i]; if(!m||!m.b64||!S.downloads) return;
   try{ matMsg("Preparando download…"); const r=await fetch(m.b64); if(!r.ok) throw {code:"fetch"}; const blob=new Blob([b64ParaBytes(await r.text())],{type:m.tipo||"application/octet-stream"}); matMsg(""); await S.downloads.save({filename:m.nome,data:blob}); }
   catch(e){ if(e&&e.code==="declined"){matMsg("");return;} matMsg("Não foi possível baixar agora. Use “Abrir em PDF” ou tente de novo."); }
+}
+const PORTAL_TASK="trig_01RSVDHBV8VJSxrF7qchoX4S";
+async function atualizarPortal(){
+  if(!S.mcp||S.portalBusy) return; S.portalBusy=true; render();
+  try{ await S.mcp.callTool("Claude Code Remote","fire_trigger",{trigger_id:PORTAL_TASK}); toast("Atualização do portal iniciada. Fica pronta em alguns minutos."); }
+  catch(e){ const c=e&&e.code; toast(c==="consent_required"||c==="not_granted"?"Permita o acesso ao conector para atualizar o portal.":c==="server_not_connected"||c==="needs_reauth"?"Conecte o Claude Code Remote nas configurações do Claude.":"Não foi possível iniciar a atualização agora."); }
+  finally{ setTimeout(()=>{S.portalBusy=false;render();},4000); }
 }
 function removerMaterial(i){ S.confirmMat=i; render(); }
 async function confirmarRemocao(){
@@ -679,6 +686,7 @@ function bind(){
       else if(act==="f-limpar"){S.filt={de:"",ate:"",setor:S.filt.setor};render();}
       else if(act==="lote") importLote();
       else if(act==="mat-sim") confirmarRemocao();
+      else if(act==="portal") atualizarPortal();
       else if(act==="mat-nao"){S.confirmMat=null;render();}
       return;
     }
@@ -725,6 +733,7 @@ if(!PORTAL) (async()=>{
   if(!c||!c.use){ banner("Abra esta página no Claude para salvar e consultar os treinamentos."); S.canWrite=false; S.loaded={t:true,p:true}; render(); return; }
   const [db,user,dl,as]=await Promise.all([c.use("db"),c.use("user"),c.use("downloads"),c.use("assets")]);
   S.downloads=dl; S.assets=as;
+  c.use("mcp").then(m=>{ S.mcp=m; if(m) render(); }).catch(()=>{});
   if(!db){ banner("Entre na sua conta para ver e registrar os treinamentos."); S.canWrite=false; S.loaded={t:true,p:true}; render(); return; }
   S.db=db;
   if(user){ try{ const w=await user.can("data.write"); if(w===false) S.canWrite=false; }catch(e){} }
