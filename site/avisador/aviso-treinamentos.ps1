@@ -1,10 +1,21 @@
 ﻿# Avisador de Treinamentos Mavaular
 # Lê a agenda publicada no portal e mostra uma notificação do Windows:
 #   - na véspera (a partir das 8h), no dia do treinamento e 1 hora antes do início.
-# Instalado pelo "instalar.bat"; roda escondido a cada 30 minutos e ao entrar no Windows.
-param([switch]$Teste, [string]$Arquivo = "", [string]$Agora = "")
+# Instalado pelo "instalar.bat"; inicia com o Windows e confere a agenda a cada 30 minutos.
+param([switch]$Teste, [switch]$Laco, [string]$Arquivo = "", [string]$Agora = "")
 
 $ErrorActionPreference = "Stop"
+
+# Modo contínuo: uma única cópia rodando, conferindo a cada 30 minutos
+if ($Laco) {
+    $criado = $false
+    $mutex = New-Object System.Threading.Mutex($true, "Local\AvisadorTreinamentosMavaular", [ref]$criado)
+    if (-not $criado) { exit 0 }
+    while ($true) {
+        try { & $PSCommandPath } catch { }
+        Start-Sleep -Seconds 1800
+    }
+}
 $AgendaUrl = "https://treinamentos-mavaular.netlify.app/agenda.ics"
 $PortalUrl = "https://treinamentos-mavaular.netlify.app"
 # Guarda a cópia da agenda e os avisos já mostrados na pasta do próprio avisador (ou na pasta temporária)

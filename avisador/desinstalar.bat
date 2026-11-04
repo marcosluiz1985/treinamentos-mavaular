@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 >nul
 title Avisador de Treinamentos Mavaular - Remover
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | Where-Object { $_.CommandLine -like '*aviso-treinamentos.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
 schtasks /Delete /F /TN "Avisador de Treinamentos Mavaular" >nul 2>&1
 powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue ([Environment]::GetFolderPath('Startup')+'\Avisador de Treinamentos Mavaular.lnk')" >nul 2>&1
 rmdir /S /Q "%LOCALAPPDATA%\TreinamentosMavaular" >nul 2>&1
