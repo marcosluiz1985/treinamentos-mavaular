@@ -736,7 +736,8 @@ fromHash(); render();
 if(PORTAL){
   S.trainings=SNAP.treinamentos||[]; S.canWrite=false; S.loaded={t:true,p:true};
   document.title="Portal de Treinamentos"; $(".topbar-title").textContent="Portal de Treinamentos";
-  $(".topbar-right").textContent=SNAP.geradoEm?"Atualizado em "+SNAP.geradoEm:"";
+  $(".topbar-right").innerHTML=`<button class="portal-btn" id="btn-recarregar" title="Buscar a versão mais recente do portal">↻ Recarregar</button>${SNAP.geradoEm?`<div class="portal-msg">Atualizado em ${esc(SNAP.geradoEm)}</div>`:""}`;
+  $("#btn-recarregar").onclick=()=>{ const u=new URL(location.href); u.searchParams.set("v",Date.now()); location.replace(u.toString()); };
   const tc=$("#tab-colaboradores"); if(tc) tc.remove();
   if(S.view==="colaboradores") S.view="agenda";
   render();
