@@ -15,13 +15,7 @@ rem Escolhe a pasta: Documentos, AppData ou a propria pasta extraida
 set "DEST="
 call :preparar "%USERPROFILE%\Documents\Avisador de Treinamentos"
 if not defined DEST call :preparar "%LOCALAPPDATA%\TreinamentosMavaular"
-if not defined DEST if exist "%ORIGEM%\aviso-treinamentos.ps1" call :startup_vbs
-if not exist "%STARTUP%" mkdir "%STARTUP%" 2>nul
-> "%STARTUP%\Avisador de Treinamentos Mavaular.vbs" echo CreateObject("WScript.Shell").Run "wscript.exe ""%DEST%\executar-oculto.vbs""", 0, False
-if exist "%STARTUP%\Avisador de Treinamentos Mavaular.vbs" set "INICIO_OK=1"
-exit /b 0
-
-:usar_origem
+if not defined DEST if exist "%ORIGEM%\aviso-treinamentos.ps1" call :usar_origem
 if not defined DEST (
   echo.
   echo O Windows bloqueou a instalacao em todas as pastas tentadas.
