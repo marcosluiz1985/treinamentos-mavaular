@@ -1,0 +1,18 @@
+AVISADOR DE TREINAMENTOS MAVAULAR
+
+O que faz: mostra um aviso na tela do Windows
+  - na vespera do treinamento (a partir das 8h),
+  - no dia do treinamento,
+  - 1 hora antes do inicio.
+Clicando em "Ver detalhes" abre o treinamento no portal, com os materiais.
+Ele le a agenda do portal (https://treinamentos-mavaular.netlify.app),
+entao treinamentos novos entram sozinhos.
+
+Como instalar:
+  1. Descompacte esta pasta (botao direito > Extrair tudo).
+  2. Clique duas vezes em "instalar.bat".
+     Se o Windows mostrar "O Windows protegeu o computador",
+     clique em "Mais informacoes" > "Executar assim mesmo".
+  3. Deve aparecer um aviso de teste no canto da tela.
+
+Nao precisa ser administrador. Para remover: "desinstalar.bat".
