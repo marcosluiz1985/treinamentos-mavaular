@@ -9,7 +9,10 @@ $AgendaUrl = "https://treinamentos-mavaular.netlify.app/agenda.ics"
 $PortalUrl = "https://treinamentos-mavaular.netlify.app"
 # Guarda a cópia da agenda e os avisos já mostrados na pasta do próprio avisador (ou na pasta temporária)
 $Pasta = $null
-foreach ($cand in @($PSScriptRoot, (Join-Path $env:LOCALAPPDATA "TreinamentosMavaular"), (Join-Path ([IO.Path]::GetTempPath()) "TreinamentosMavaular"))) {
+$candidatas = @($PSScriptRoot)
+if ($env:LOCALAPPDATA) { $candidatas += (Join-Path $env:LOCALAPPDATA "TreinamentosMavaular") }
+$candidatas += (Join-Path ([IO.Path]::GetTempPath()) "TreinamentosMavaular")
+foreach ($cand in $candidatas) {
     if (-not $cand) { continue }
     try {
         New-Item -ItemType Directory -Force -Path $cand -ErrorAction Stop | Out-Null
