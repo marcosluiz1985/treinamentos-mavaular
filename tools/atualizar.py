@@ -99,6 +99,7 @@ def montar(pasta):
                       "chamada": sorted([{"setor": p.get("setor", ""), "presenca": p.get("presenca")} for p in parts], key=lambda x: (x["setor"], str(x["presenca"]))),
                       "materiais": mats})
 
+    gerar_ics(ts)
     agora = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M")
     snap = json.dumps({"geradoEm": agora, "treinamentos": saida}, ensure_ascii=False).replace("</", "<\\/")
     src = open(os.path.join(TOOLS, "page.src.html"), encoding="utf-8").read()
@@ -111,6 +112,78 @@ def montar(pasta):
            + page + '</body></html>')
     open(os.path.join(SITE, "index.html"), "w", encoding="utf-8").write(doc)
     print(f"ok: {len(saida)} treinamentos, {sum(len(t['materiais']) for t in saida)} materiais, atualizado em {agora}")
+
+
+PORTAL_URL = "https://treinamentos-mavaular.netlify.app"
+VTZ = ["BEGIN:VTIMEZONE", "TZID:America/Sao_Paulo", "BEGIN:STANDARD", "DTSTART:19700101T000000",
+       "TZOFFSETFROM:-0300", "TZOFFSETTO:-0300", "TZNAME:-03", "END:STANDARD", "END:VTIMEZONE"]
+
+
+def _esc(t):
+    return str(t or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\r", "").replace("\n", "\\n")
+
+
+def _fold(linha):
+    b = linha.encode("utf-8"); out = []
+    while len(b) > 74:
+        corte = 74
+        while (b[corte] & 0xC0) == 0x80: corte -= 1
+        out.append(b[:corte].decode("utf-8")); b = b" " + b[corte:]
+    out.append(b.decode("utf-8"))
+    return "\r\n".join(out)
+
+
+def _duracao_min(carga):
+    txt = str(carga or "").lower().replace(",", ".")
+    h = re.search(r"(\d+(?:\.\d+)?)\s*h", txt); m = re.search(r"(\d+)\s*min", txt)
+    tot = (float(h.group(1)) * 60 if h else 0) + (int(m.group(1)) if m else 0)
+    return int(tot) if tot > 0 else 60
+
+
+def _vevent(tid, t, carimbo):
+    data = str(t.get("data") or "")
+    if not re.match(r"\d{4}-\d{2}-\d{2}$", data): return []
+    d = data.replace("-", ""); hora = str(t.get("hora") or "")
+    ev = ["BEGIN:VEVENT", f"UID:{tid}@treinamentos-mavaular", f"DTSTAMP:{carimbo}",
+          f"SUMMARY:{_esc('Treinamento: ' + str(t.get('nome', '')))}"]
+    if re.match(r"\d{2}:\d{2}$", hora):
+        ini = datetime.datetime.strptime(data + hora, "%Y-%m-%d%H:%M")
+        fim = ini + datetime.timedelta(minutes=_duracao_min(t.get("cargaHoraria")))
+        ev += [f"DTSTART;TZID=America/Sao_Paulo:{ini:%Y%m%dT%H%M%S}", f"DTEND;TZID=America/Sao_Paulo:{fim:%Y%m%dT%H%M%S}"]
+        alarmes = [("-PT1H", "Treinamento em 1 hora"), ("-P1D", "Treinamento amanhã")]
+    else:
+        fim = datetime.date.fromisoformat(data) + datetime.timedelta(days=1)
+        ev += [f"DTSTART;VALUE=DATE:{d}", f"DTEND;VALUE=DATE:{fim:%Y%m%d}"]
+        alarmes = [("-PT15H", "Treinamento amanhã")]
+    if t.get("local"): ev.append(f"LOCATION:{_esc(t['local'])}")
+    desc = [f"Assunto: {t['assunto']}" if t.get("assunto") else "", f"Público: {t['publico']}" if t.get("publico") else "",
+            f"Facilitador: {t['facilitador']}" if t.get("facilitador") else "", f"Carga horária: {t['cargaHoraria']}" if t.get("cargaHoraria") else "",
+            f"Detalhes e materiais: {PORTAL_URL}/#t-{tid}"]
+    ev.append(f"DESCRIPTION:{_esc(chr(10).join(x for x in desc if x))}")
+    ev.append(f"URL:{PORTAL_URL}/#t-{tid}")
+    for gatilho, texto in alarmes:
+        ev += ["BEGIN:VALARM", "ACTION:DISPLAY", f"TRIGGER:{gatilho}", f"DESCRIPTION:{_esc(texto + ': ' + str(t.get('nome', '')))}", "END:VALARM"]
+    ev.append("END:VEVENT")
+    return ev
+
+
+def _calendario(eventos, nome):
+    linhas = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Mavaular//Treinamentos//PT", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+              f"X-WR-CALNAME:{_esc(nome)}", "X-WR-TIMEZONE:America/Sao_Paulo", "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+              "X-PUBLISHED-TTL:PT1H"] + VTZ + eventos + ["END:VCALENDAR"]
+    return "\r\n".join(_fold(l) for l in linhas) + "\r\n"
+
+
+def gerar_ics(ts):
+    carimbo = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    pasta = os.path.join(SITE, "agenda"); shutil.rmtree(pasta, ignore_errors=True); os.makedirs(pasta)
+    todos = []
+    for tid, t in ts:
+        ev = _vevent(tid, t, carimbo)
+        if not ev: continue
+        todos += ev
+        open(os.path.join(pasta, f"{tid}.ics"), "w", encoding="utf-8", newline="").write(_calendario(ev, "Treinamentos Mavaular"))
+    open(os.path.join(SITE, "agenda.ics"), "w", encoding="utf-8", newline="").write(_calendario(todos, "Treinamentos Mavaular"))
 
 
 if __name__ == "__main__":

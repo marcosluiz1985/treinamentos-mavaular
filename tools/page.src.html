@@ -164,6 +164,9 @@ textarea{min-height:90px;resize:vertical}
 .portal-btn:hover{background:#e9e9ea}.portal-btn:disabled{opacity:.6;cursor:default}
 .portal-msg{font-size:11px;color:#a6a9ae;margin-top:4px}
 @media (max-width:640px){.topbar-right{display:block!important;grid-column:1/-1;justify-self:start;text-align:left}}
+.as-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:14px 0}
+.as-steps ol{margin:6px 0 8px;padding-left:18px;font-size:14px}
+.modal p{margin:6px 0}
 /* Materiais */
 .mat{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .mat-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
@@ -314,7 +317,7 @@ function viewAgenda(){
     <div class="cal">
       <div class="cal-head">
         <div class="nav"><button class="btn" data-act="prev" aria-label="Mês anterior">‹</button><h2>${MESES[m]} ${y}</h2><button class="btn" data-act="next" aria-label="Próximo mês">›</button><button class="btn" data-act="hoje">Hoje</button></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${!PORTAL?`<a class="btn" href="https://treinamentos-mavaular.netlify.app" target="_blank" rel="noopener">Abrir portal</a>`:""}${S.canWrite?`<button class="btn primary" data-act="novo">+ Agendar treinamento</button>`:""}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="assinar">📅 Assinar agenda</button>${!PORTAL?`<a class="btn" href="https://treinamentos-mavaular.netlify.app" target="_blank" rel="noopener">Abrir portal</a>`:""}${S.canWrite?`<button class="btn primary" data-act="novo">+ Agendar treinamento</button>`:""}</div>
       </div>
       <div class="grid7">${DOW.map(d=>`<div class="dow">${d}</div>`).join("")}${cells}</div>
       <p class="note" style="margin:8px 0 0">${PORTAL?"Clique num treinamento para ver detalhes, participantes e materiais para baixar.":"Clique num dia para agendar um encontro nessa data. Clique num treinamento para ver detalhes, chamada e folha de assinatura."}</p>
@@ -350,6 +353,7 @@ function viewDetail(t){
           <dt>Facilitador</dt><dd>${esc(t.facilitador||"—")}</dd>
           <dt>Conteúdo</dt><dd>${conteudo.length?`<ul>${conteudo.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>`:"—"}</dd>
         </dl>
+        <div class="actions" style="margin-top:12px"><a class="btn" href="${PORTAL?"agenda/"+encodeURIComponent(t.id)+".ics":PORTAL_URL+"/agenda/"+encodeURIComponent(t.id)+".ics"}" target="_blank" rel="noopener">📅 Adicionar à minha agenda</a></div>
         ${PORTAL?"":`<div class="actions">
           <button class="btn primary" data-act="pdf">Baixar folha de assinatura (PDF)</button>
           ${w?`<button class="btn" data-act="editar">Editar</button><button class="btn" data-act="duplicar">Agendar próximo encontro</button><button class="btn danger" data-act="excluir">Excluir</button>`:""}
@@ -451,6 +455,25 @@ async function baixarPortal(i){
   const t=cur(); const m=(t&&t.materiais||[])[i]; if(!m||!m.b64||!S.downloads) return;
   try{ matMsg("Preparando download…"); const r=await fetch(m.b64); if(!r.ok) throw {code:"fetch"}; const blob=new Blob([b64ParaBytes(await r.text())],{type:m.tipo||"application/octet-stream"}); matMsg(""); await S.downloads.save({filename:m.nome,data:blob}); }
   catch(e){ if(e&&e.code==="declined"){matMsg("");return;} matMsg("Não foi possível baixar agora. Use “Abrir em PDF” ou tente de novo."); }
+}
+const PORTAL_URL="https://treinamentos-mavaular.netlify.app";
+function abrirAssinatura(){
+  const http=PORTAL_URL+"/agenda.ics", webcal=http.replace(/^https:/,"webcal:");
+  $("#modal-root").innerHTML=`<div class="overlay" id="ov"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="as-t">
+    <h2 id="as-t">Assinar a agenda de treinamentos</h2>
+    <p>Os treinamentos aparecem junto com os seus compromissos e se atualizam sozinhos quando algo muda.</p>
+    <div class="field"><label for="as-url">Endereço da agenda</label><div style="display:flex;gap:8px"><input type="text" id="as-url" readonly value="${http}"><button class="btn" type="button" id="as-copy">Copiar</button></div></div>
+    <div class="as-steps">
+      <div><h3>Outlook (Windows)</h3><ol><li>Na parte de <b>Calendário</b>, clique em <b>Adicionar calendário</b> (ou Abrir calendário).</li><li>Escolha <b>Da internet</b> / <b>Assinar da Web</b>.</li><li>Cole o endereço e confirme.</li></ol></div>
+      <div><h3>Google Agenda</h3><ol><li>Em <b>Outras agendas</b>, clique em <b>+</b> e depois <b>Do URL</b>.</li><li>Cole o endereço e clique em <b>Adicionar agenda</b>.</li></ol></div>
+      <div><h3>Celular (iPhone)</h3><ol><li>Toque no botão abaixo e confirme <b>Assinar</b>.</li></ol><a class="btn" href="${webcal}">Abrir no celular</a></div>
+    </div>
+    <p class="note">Os eventos já vêm com aviso 1 dia antes e 1 hora antes. Em agendas assinadas, alguns programas (como o Outlook) não mostram esses avisos na tela; para garantir o lembrete, use também “Adicionar à minha agenda” em cada treinamento. O Outlook e o Google atualizam agendas assinadas de tempos em tempos (pode levar algumas horas).</p>
+    <div class="actions"><button class="btn primary" type="button" id="as-ok">Fechar</button></div>
+  </div></div>`;
+  const close=()=>{$("#modal-root").innerHTML="";};
+  $("#as-ok").onclick=close; $("#ov").addEventListener("click",e=>{if(e.target.id==="ov")close()});
+  $("#as-copy").onclick=async()=>{ try{ await navigator.clipboard.writeText(http); toast("Endereço copiado"); }catch(e){ const i=$("#as-url"); i.focus(); i.select(); toast("Selecione e copie com Ctrl+C"); } };
 }
 const PORTAL_TASK="trig_01RSVDHBV8VJSxrF7qchoX4S";
 async function atualizarPortal(){
@@ -701,6 +724,7 @@ function bind(){
       else if(act==="lote") importLote();
       else if(act==="mat-sim") confirmarRemocao();
       else if(act==="portal") atualizarPortal();
+      else if(act==="assinar") abrirAssinatura();
       else if(act==="mat-nao"){S.confirmMat=null;render();}
       return;
     }
