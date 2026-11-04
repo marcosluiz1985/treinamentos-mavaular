@@ -160,6 +160,10 @@ textarea{min-height:90px;resize:vertical}
 .pk-sel{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .pk-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:3px 4px 3px 9px;border-radius:999px}
 .pk-chip button{border:0;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 4px}
+.portal-btn{background:#fff;color:#111;border:0;border-radius:8px;padding:8px 14px;font:600 12px var(--f-body);cursor:pointer;white-space:nowrap}
+.portal-btn:hover{background:#e9e9ea}.portal-btn:disabled{opacity:.6;cursor:default}
+.portal-msg{font-size:11px;color:#a6a9ae;margin-top:4px}
+@media (max-width:640px){.topbar-right{display:block!important;grid-column:1/-1;justify-self:start;text-align:left}}
 /* Materiais */
 .mat{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .mat-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
@@ -185,7 +189,7 @@ label.btn{cursor:pointer}
 <div class="topbar"><div class="topbar-in">
   <div><h1 class="topbar-title">Treinamentos Mavaular</h1><div class="topbar-sub" id="subtitle"></div></div>
   <img src="__LOGO2__" alt="Mavaular Móveis">
-  <div class="topbar-right">Gestão de pessoas</div>
+  <div class="topbar-right" id="topbar-right">Gestão de pessoas</div>
 </div></div>
 <div class="tabbar"><nav class="tabs" aria-label="Seções">
   <button id="tab-agenda" data-view="agenda">Agenda</button>
@@ -263,7 +267,14 @@ document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("clic
 window.addEventListener("hashchange",()=>{fromHash();render();});
 
 /* ---------- render ---------- */
+function renderTopRight(){
+  const el=$("#topbar-right"); if(!el||PORTAL) return;
+  if(!S.canWrite){ el.textContent="Gestão de pessoas"; return; }
+  el.innerHTML=`<button class="portal-btn" id="btn-portal" ${S.portalBusy?"disabled":""}>${S.portalBusy?"Atualizando…":"↻ Atualizar portal"}</button>${S.portalMsg?`<div class="portal-msg">${esc(S.portalMsg)}</div>`:""}`;
+  $("#btn-portal").onclick=atualizarPortal;
+}
 function render(){
+  renderTopRight();
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-current", String(b.dataset.view===S.view || (S.view==="detalhe"&&b.dataset.view==="agenda"))));
   const app=$("#app");
   if (S.view==="indicadores") app.innerHTML=viewInd();
@@ -303,7 +314,7 @@ function viewAgenda(){
     <div class="cal">
       <div class="cal-head">
         <div class="nav"><button class="btn" data-act="prev" aria-label="Mês anterior">‹</button><h2>${MESES[m]} ${y}</h2><button class="btn" data-act="next" aria-label="Próximo mês">›</button><button class="btn" data-act="hoje">Hoje</button></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${!PORTAL?`<a class="btn" href="https://treinamentos-mavaular.netlify.app" target="_blank" rel="noopener">Abrir portal</a>`:""}${S.mcp&&S.canWrite?`<button class="btn" data-act="portal" ${S.portalBusy?"disabled":""}>${S.portalBusy?"Enviando…":"Atualizar portal"}</button>`:""}${S.canWrite?`<button class="btn primary" data-act="novo">+ Agendar treinamento</button>`:""}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${!PORTAL?`<a class="btn" href="https://treinamentos-mavaular.netlify.app" target="_blank" rel="noopener">Abrir portal</a>`:""}${S.canWrite?`<button class="btn primary" data-act="novo">+ Agendar treinamento</button>`:""}</div>
       </div>
       <div class="grid7">${DOW.map(d=>`<div class="dow">${d}</div>`).join("")}${cells}</div>
       <p class="note" style="margin:8px 0 0">${PORTAL?"Clique num treinamento para ver detalhes, participantes e materiais para baixar.":"Clique num dia para agendar um encontro nessa data. Clique num treinamento para ver detalhes, chamada e folha de assinatura."}</p>
@@ -443,8 +454,11 @@ async function baixarPortal(i){
 }
 const PORTAL_TASK="trig_01RSVDHBV8VJSxrF7qchoX4S";
 async function atualizarPortal(){
-  if(!S.mcp||S.portalBusy) return; S.portalBusy=true; render();
-  try{ await S.mcp.callTool("Claude Code Remote","fire_trigger",{trigger_id:PORTAL_TASK}); toast("Atualização do portal iniciada. Fica pronta em alguns minutos."); }
+  if(S.portalBusy) return;
+  if(!S.mcp){ try{ S.mcp=await window.claude.use("mcp"); }catch(e){} }
+  if(!S.mcp){ toast("Abra o site de gestão no Claude (claude.ai) para atualizar o portal."); return; }
+  S.portalBusy=true; S.portalMsg=""; render();
+  try{ await S.mcp.callTool("Claude Code Remote","fire_trigger",{trigger_id:PORTAL_TASK}); toast("Atualização do portal iniciada. Fica pronta em alguns minutos."); const h=new Date(); S.portalMsg="Pedido enviado às "+String(h.getHours()).padStart(2,"0")+":"+String(h.getMinutes()).padStart(2,"0"); }
   catch(e){ const c=e&&e.code; toast(c==="consent_required"||c==="not_granted"?"Permita o acesso ao conector para atualizar o portal.":c==="server_not_connected"||c==="needs_reauth"?"Conecte o Claude Code Remote nas configurações do Claude.":"Não foi possível iniciar a atualização agora."); }
   finally{ setTimeout(()=>{S.portalBusy=false;render();},4000); }
 }
