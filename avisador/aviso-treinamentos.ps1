@@ -7,11 +7,19 @@ param([switch]$Teste, [string]$Arquivo = "", [string]$Agora = "")
 $ErrorActionPreference = "Stop"
 $AgendaUrl = "https://treinamentos-mavaular.netlify.app/agenda.ics"
 $PortalUrl = "https://treinamentos-mavaular.netlify.app"
-$Pasta     = Join-Path $env:LOCALAPPDATA "TreinamentosMavaular"
-if (-not $env:LOCALAPPDATA) { $Pasta = Join-Path ([IO.Path]::GetTempPath()) "TreinamentosMavaular" }
+# Guarda a cópia da agenda e os avisos já mostrados na pasta do próprio avisador (ou na pasta temporária)
+$Pasta = $null
+foreach ($cand in @($PSScriptRoot, (Join-Path $env:LOCALAPPDATA "TreinamentosMavaular"), (Join-Path ([IO.Path]::GetTempPath()) "TreinamentosMavaular"))) {
+    if (-not $cand) { continue }
+    try {
+        New-Item -ItemType Directory -Force -Path $cand -ErrorAction Stop | Out-Null
+        $t = Join-Path $cand ".teste-gravacao"; [IO.File]::WriteAllText($t, "ok"); Remove-Item $t -Force
+        $Pasta = $cand; break
+    } catch { }
+}
+if (-not $Pasta) { $Pasta = [IO.Path]::GetTempPath() }
 $Cache     = Join-Path $Pasta "agenda.ics"
 $Estado    = Join-Path $Pasta "avisos-mostrados.txt"
-New-Item -ItemType Directory -Force -Path $Pasta | Out-Null
 
 function Mostrar-Aviso([string]$Titulo, [string]$Linha1, [string]$Linha2, [string]$Link) {
     if ($env:AVISO_SIMULAR) { Write-Output ("AVISO | {0} | {1} | {2} | {3}" -f $Titulo, $Linha1, $Linha2, $Link); return }
