@@ -15,7 +15,13 @@ rem Escolhe a pasta: Documentos, AppData ou a propria pasta extraida
 set "DEST="
 call :preparar "%USERPROFILE%\Documents\Avisador de Treinamentos"
 if not defined DEST call :preparar "%LOCALAPPDATA%\TreinamentosMavaular"
-if not defined DEST if exist "%ORIGEM%\aviso-treinamentos.ps1" call :usar_origem
+if not defined DEST if exist "%ORIGEM%\aviso-treinamentos.ps1" call :startup_vbs
+if not exist "%STARTUP%" mkdir "%STARTUP%" 2>nul
+> "%STARTUP%\Avisador de Treinamentos Mavaular.vbs" echo CreateObject("WScript.Shell").Run "wscript.exe ""%DEST%\executar-oculto.vbs""", 0, False
+if exist "%STARTUP%\Avisador de Treinamentos Mavaular.vbs" set "INICIO_OK=1"
+exit /b 0
+
+:usar_origem
 if not defined DEST (
   echo.
   echo O Windows bloqueou a instalacao em todas as pastas tentadas.
@@ -31,13 +37,19 @@ rem Arquivo que inicia o avisador sem abrir janela (modo continuo)
 >> "%DEST%\executar-oculto.vbs" echo CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ ^& pasta ^& "\aviso-treinamentos.ps1"" -Laco", 0, False
 powershell -NoProfile -Command "Unblock-File -Path '%DEST%\aviso-treinamentos.ps1'" >nul 2>&1
 
-rem Inicia junto com o Windows (pasta Inicializar - nao precisa de permissao especial)
-powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\Avisador de Treinamentos Mavaular.lnk'); $s.TargetPath='wscript.exe'; $s.Arguments='\"%DEST%\executar-oculto.vbs\"'; $s.Save()"
-if errorlevel 1 (
+rem Inicia junto com o Windows (registro do usuario; se bloqueado, pasta Inicializar)
+set "INICIO_OK="
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "AvisadorTreinamentosMavaular" /t REG_SZ /d "wscript.exe \"%DEST%\executar-oculto.vbs\"" /f >nul 2>&1
+if not errorlevel 1 set "INICIO_OK=1"
+if not defined INICIO_OK (
+  set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+  call :startup_vbs
+)
+if not defined INICIO_OK (
   echo.
   echo Nao foi possivel colocar o avisador para iniciar com o Windows.
-  pause
-  exit /b 1
+  echo Ele vai funcionar agora, mas depois de reiniciar o notebook
+  echo sera preciso abrir "executar-oculto.vbs" na pasta: %DEST%
 )
 
 rem Aviso de teste e inicio imediato
@@ -78,6 +90,12 @@ if not exist "%ALVO%\aviso-treinamentos.ps1" exit /b 1
 (echo teste) > "%ALVO%\executar-oculto.vbs" 2>nul
 if not exist "%ALVO%\executar-oculto.vbs" exit /b 1
 set "DEST=%ALVO%"
+exit /b 0
+
+:startup_vbs
+if not exist "%STARTUP%" mkdir "%STARTUP%" 2>nul
+> "%STARTUP%\Avisador de Treinamentos Mavaular.vbs" echo CreateObject("WScript.Shell").Run "wscript.exe ""%DEST%\executar-oculto.vbs""", 0, False
+if exist "%STARTUP%\Avisador de Treinamentos Mavaular.vbs" set "INICIO_OK=1"
 exit /b 0
 
 :usar_origem
