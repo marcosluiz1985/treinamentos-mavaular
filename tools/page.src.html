@@ -214,7 +214,7 @@ const DOW = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
 const SNAP = window.__SNAP || null; const PORTAL = !!SNAP;
 const chamadaDe = t => PORTAL ? (t.chamada||[]) : (t.participantes||[]);
-const S = {
+const S = { legado:[], porAutor:{}, subs:{}, nomes:{}, uid:null, isOwner:false, isAdmin:false,
   view: "agenda", detailId: null,
   month: (()=>{const d=new Date();return {y:d.getFullYear(),m:d.getMonth()}})(),
   trainings: [], people: [], loaded:{t:false,p:false},
@@ -247,13 +247,16 @@ const queues = {};
 function write(path, fn){
   if (!S.db){ toast("Sem conexão com a base de dados."); return Promise.resolve(); }
   const q = (queues[path]||Promise.resolve()).then(fn).catch(e=>{
-    if (e && e.code==="invalid_argument"){ S.canWrite=false; banner("Você tem acesso só de leitura a esta página."); render(); }
+    if (e && e.code==="invalid_argument"){ toast("Você não tem permissão para alterar isso. Só quem cadastrou o treinamento pode mudá-lo."); }
     else if (e && e.code==="quota_exceeded") toast("Limite de registros atingido. Exclua treinamentos antigos.");
     else toast("Não foi possível salvar. Tente de novo.");
   });
   queues[path]=q; return q;
 }
-function saveTraining(t){ const {id,...body}=t; return write("treinamentos/"+id, ()=>S.db.collection("treinamentos").doc(id).set(body)); }
+function docPath(t){ return t._autor ? "treinamentos/"+t._autor+"/itens/"+t.id : "treinamentos/"+t.id; }
+function podeEditar(t){ return !!(S.canWrite && t && (S.isAdmin || (t._autor && t._autor===S.uid))); }
+function garantirMarcador(){ if(!S.uid||S.marcadorOk) return Promise.resolve(); S.marcadorOk=true; return write("treinamentos/"+S.uid, ()=>S.db.doc("treinamentos/"+S.uid).set({autor:true})); }
+function saveTraining(t){ const {id,_autor,...body}=t; const p=docPath(t); return garantirMarcador().then(()=>write(p, ()=>S.db.doc(p).set(body))); }
 
 /* ---------- navegação ---------- */
 function go(view, id){
@@ -272,7 +275,7 @@ window.addEventListener("hashchange",()=>{fromHash();render();});
 /* ---------- render ---------- */
 function renderTopRight(){
   const el=$("#topbar-right"); if(!el||PORTAL) return;
-  if(!S.canWrite){ el.textContent="Gestão de pessoas"; return; }
+  if(!S.canWrite||!S.isOwner){ el.textContent="Gestão de pessoas"; return; }
   el.innerHTML=`<button class="portal-btn" id="btn-portal" ${S.portalBusy?"disabled":""}>${S.portalBusy?"Atualizando…":"↻ Atualizar portal"}</button>${S.portalMsg?`<div class="portal-msg">${esc(S.portalMsg)}</div>`:""}`;
   $("#btn-portal").onclick=atualizarPortal;
 }
@@ -336,7 +339,8 @@ function viewDetail(t){
   const setores=[...new Set(S.people.map(p=>p.setor).filter(Boolean))].sort();
   const inList=new Set(parts.map(p=>p.nome.toUpperCase()));
   const avail=S.people.filter(p=>!inList.has(p.nome.toUpperCase())).sort((a,b)=>a.nome.localeCompare(b.nome));
-  const w=S.canWrite;
+  const w=podeEditar(t);
+  const autorNome=t._autor?(S.nomes[t._autor]||""):"";
   return `<section class="view">
     <button class="btn back" data-act="go-agenda">‹ Agenda</button>
     <div class="detail">
@@ -351,6 +355,7 @@ function viewDetail(t){
           <dt>Local</dt><dd>${esc(t.local||"—")}</dd>
           <dt>Público</dt><dd>${esc(t.publico||"—")}</dd>
           <dt>Facilitador</dt><dd>${esc(t.facilitador||"—")}</dd>
+          ${!PORTAL&&autorNome?`<dt>Cadastrado por</dt><dd>${esc(autorNome)}${t._autor===S.uid?" (você)":""}</dd>`:""}
           <dt>Conteúdo</dt><dd>${conteudo.length?`<ul>${conteudo.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>`:"—"}</dd>
         </dl>
         <div class="actions" style="margin-top:12px"><a class="btn" href="${PORTAL?"agenda/"+encodeURIComponent(t.id)+".ics":PORTAL_URL+"/agenda/"+encodeURIComponent(t.id)+".ics"}" target="_blank" rel="noopener">📅 Adicionar à minha agenda</a></div>
@@ -395,7 +400,7 @@ function viewDetail(t){
 const fmtSize=b=>b>=1048576?(b/1048576).toLocaleString("pt-BR",{maximumFractionDigits:1})+" MB":Math.max(1,Math.round(b/1024))+" KB";
 const extOf=n=>(String(n).split(".").pop()||"").toUpperCase().slice(0,4);
 function viewMateriais(t){
-  const ms=t.materiais||[]; const up=!!S.assets;
+  const ms=t.materiais||[]; const up=!!S.assets&&podeEditar(t);
   return `<div class="mat"><h3>Materiais do treinamento</h3>
     <p class="note" style="margin:4px 0 10px">Slides, apostilas e vídeos para os participantes baixarem.</p>
     ${ms.length?`<ul class="mat-list">${ms.map((m,i)=>`<li><span class="ext">${esc(extOf(m.nome))}</span><div class="mi"><div class="mn">${esc(m.nome)}</div><div class="note">${fmtSize(m.tamanho||0)} · enviado em ${fmtDate((m.enviadoEm||"").slice(0,10))}</div></div>
@@ -457,6 +462,23 @@ async function baixarPortal(i){
   catch(e){ if(e&&e.code==="declined"){matMsg("");return;} matMsg("Não foi possível baixar agora. Use “Abrir em PDF” ou tente de novo."); }
 }
 const PORTAL_URL="https://treinamentos-mavaular.netlify.app";
+async function resolverNomes(ids){
+  if(!S.user||!ids.length) return;
+  try{ const ps=await S.user.profiles(ids); let mudou=false; for(const id of ids){ const n=(ps[id]&&ps[id].name)||""; if(n&&S.nomes[id]!==n){ S.nomes[id]=n; mudou=true; } } if(mudou&&!$("#modal-root").innerHTML) render(); }catch(e){}
+}
+// Treinamentos antigos (antes da separação por pessoa) passam para a área do dono
+async function migrarLegado(){
+  if(S.migrando||!S.isOwner||!S.uid||!S.legado.length) return; S.migrando=true;
+  try{
+    await garantirMarcador();
+    for(const t of [...S.legado]){
+      const {id,_autor,...body}=t;
+      await S.db.doc("treinamentos/"+S.uid+"/itens/"+id).set(body);
+      await S.db.doc("treinamentos/"+id).delete();
+    }
+  }catch(e){ console.warn("migração", e&&e.code); }
+  S.migrando=false;
+}
 function abrirAssinatura(){
   const http=PORTAL_URL+"/agenda.ics", webcal=http.replace(/^https:/,"webcal:");
   $("#modal-root").innerHTML=`<div class="overlay" id="ov"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="as-t">
@@ -571,7 +593,7 @@ function viewInd(){
 
 /* ---------- colaboradores ---------- */
 function viewPeople(){
-  const w=S.canWrite; const ps=[...S.people].sort((a,b)=>(a.setor||"").localeCompare(b.setor||"")||a.nome.localeCompare(b.nome));
+  const w=S.canWrite&&S.isAdmin; const ps=[...S.people].sort((a,b)=>(a.setor||"").localeCompare(b.setor||"")||a.nome.localeCompare(b.nome));
   const setores=[...new Set(ps.map(p=>p.setor).filter(Boolean))].sort();
   return `<section class="view"><div class="detail">
     <div class="card"><h3>Cadastro de colaboradores</h3><p class="note">Quem está aqui pode ser adicionado aos treinamentos por nome ou pelo setor inteiro.${S.peopleOrigem?` Lista importada de: ${esc(S.peopleOrigem)}${S.peopleData?", em "+fmtDate(S.peopleData):""}.`:""}</p>
@@ -650,8 +672,9 @@ function openForm(t, presetDate){
       materiais: isNew ? [] : (v.materiais||[]),
       criadoEm: v.criadoEm || new Date().toISOString() };
     if(!body.nome||!body.data) return;
-    const id = isNew ? S.db.collection("treinamentos").doc().id : v.id;
-    const t2={id,...body}; upsertLocal(t2); saveTraining(t2).then(()=>toast(isNew?"Treinamento agendado":"Alterações salvas"));
+    const autor = isNew ? S.uid : v._autor;
+    const id = isNew ? S.db.collection("treinamentos/"+S.uid+"/itens").doc().id : v.id;
+    const t2={id,...body}; if(autor) t2._autor=autor; upsertLocal(t2); saveTraining(t2).then(()=>toast(isNew?"Treinamento agendado":"Alterações salvas"));
     close(); const [yy,mm]=body.data.split("-"); S.month={y:+yy,m:+mm-1}; go("detalhe",id);
   });
 }
@@ -713,10 +736,10 @@ function bind(){
       else if(act==="go-agenda") go("agenda");
       else if(act==="editar") openForm(cur());
       else if(act==="duplicar"){ const t=cur(); const d=new Date(t.data+"T12:00:00"); d.setDate(d.getDate()+30);
-        const iso=d.toISOString().slice(0,10); openForm({...t,id:null,data:iso,criadoEm:null}); }
+        const iso=d.toISOString().slice(0,10); openForm({...t,id:null,_autor:null,data:iso,criadoEm:null}); }
       else if(act==="excluir"){S.confirmDel=true;render();}
       else if(act==="excluir-nao"){S.confirmDel=false;render();}
-      else if(act==="excluir-sim"){ const id=S.detailId; S.trainings=S.trainings.filter(x=>x.id!==id); write("treinamentos/"+id,()=>S.db.collection("treinamentos").doc(id).delete()).then(()=>toast("Treinamento excluído")); go("agenda"); }
+      else if(act==="excluir-sim"){ const id=S.detailId; const tx=cur(); const p=tx?docPath(tx):"treinamentos/"+id; S.trainings=S.trainings.filter(x=>x.id!==id); write(p,()=>S.db.doc(p).delete()).then(()=>toast("Treinamento excluído")); go("agenda"); }
       else if(act==="pdf") downloadPDF();
       else if(act==="todos-p") mutate(c=>c.participantes.forEach(p=>p.presenca="presente"));
       else if(act==="limpar") mutate(c=>c.participantes.forEach(p=>p.presenca=null));
@@ -776,12 +799,25 @@ if(!PORTAL) (async()=>{
   c.use("mcp").then(m=>{ S.mcp=m; if(m) render(); }).catch(()=>{});
   if(!db){ banner("Entre na sua conta para ver e registrar os treinamentos."); S.canWrite=false; S.loaded={t:true,p:true}; render(); return; }
   S.db=db;
-  if(user){ try{ const w=await user.can("data.write"); if(w===false) S.canWrite=false; }catch(e){} }
+  S.user=user;
+  if(user){
+    try{ const w=await user.can("data.write"); if(w===false) S.canWrite=false; }catch(e){}
+    try{ S.isOwner=await user.isOwner(); S.isAdmin=await user.canEdit(); S.uid=await user.id(); }catch(e){}
+  }
   const timer=setTimeout(()=>{ if(!S.loaded.t) banner("Os dados ainda não responderam. Verifique a conexão."); },10000);
+  const conv=d=>({id:d.id,...d.data(),participantes:JSON.parse(JSON.stringify(d.data().participantes||[]))});
+  const juntar=()=>{ S.trainings=[...S.legado, ...Object.entries(S.porAutor).flatMap(([u,l])=>l.map(t=>({...t,_autor:u})))]; if(!$("#modal-root").innerHTML) render(); };
+  const assinarAutor=uid=>{
+    if(S.subs[uid]) return; S.subs[uid]=true;
+    db.collection("treinamentos/"+uid+"/itens").onSnapshot(snap=>{ S.porAutor[uid]=snap.docs.map(conv); juntar(); }, ()=>{});
+  };
   db.collection("treinamentos").onSnapshot(snap=>{
-    S.trainings=snap.docs.map(d=>({id:d.id,...d.data(),participantes:JSON.parse(JSON.stringify(d.data().participantes||[]))}));
-    if(!snap.metadata.fromCache){ S.loaded.t=true; clearTimeout(timer); banner(S.canWrite?"":"Você tem acesso só de leitura a esta página."); }
-    if(!$("#modal-root").innerHTML) render();
+    const marc=[], leg=[];
+    snap.docs.forEach(d=>{ const x=d.data(); if(x&&x.autor===true&&!x.nome) marc.push(d.id); else leg.push(conv(d)); });
+    S.legado=leg; marc.forEach(assinarAutor); if(S.uid&&marc.includes(S.uid)) S.marcadorOk=true;
+    resolverNomes(marc);
+    if(!snap.metadata.fromCache){ S.loaded.t=true; clearTimeout(timer); banner(S.canWrite?"":"Você tem acesso só de leitura a esta página."); migrarLegado(); }
+    juntar();
   }, e=>{ clearTimeout(timer); S.loaded.t=true; banner("Não foi possível carregar os treinamentos."); render(); });
   db.doc("cadastro/colaboradores").onSnapshot(snap=>{
     const d=snap.exists?snap.data():{}; S.people=(d.lista||[]).map(p=>({...p})); S.peopleOrigem=d.origem||""; S.peopleData=d.atualizadoEm||"";
