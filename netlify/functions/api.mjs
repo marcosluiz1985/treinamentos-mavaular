@@ -90,7 +90,7 @@ function formaPublica(t, logado) {
     base.participantes = (t.participantes || []).map((p) => ({ nome: p.nome, setor: p.setor }));
     base.chamada = (t.participantes || []).map((p) => ({ setor: p.setor, presenca: p.presenca ?? null }));
   }
-  base.materiais = (t.materiais || []).map((m) => ({ id: m.id, nome: m.nome, tipo: m.tipo, tamanho: m.tamanho, enviadoEm: m.enviadoEm }));
+  base.materiais = (t.materiais || []).map((m) => ({ id: m.id, nome: m.nome, tipo: m.tipo, tamanho: m.tamanho, enviadoEm: m.enviadoEm, ...(m.url ? { url: m.url } : {}) }));
   return base;
 }
 function normalizarTreinamento(b) {
@@ -221,6 +221,7 @@ export default async (req) => {
       const t = await st.get("treinamentos/" + m[1], { type: "json" });
       const mat = t && (t.materiais || []).find((x) => x.id === m[2]);
       if (!mat) return erro("Material não encontrado", 404);
+      if (mat.url) return new Response(null, { status: 302, headers: { location: mat.url } });
       const partes = mat.partes || 1; const chaves = Array.from({ length: partes }, (_, i) => `materiais/${m[1]}/${m[2]}/${i}`);
       const corpo = new ReadableStream({
         async start(ctrl) {
@@ -335,6 +336,21 @@ export default async (req) => {
         return json({ material: { id: mat.id, nome: mat.nome, tipo: mat.tipo, tamanho: mat.tamanho, enviadoEm: mat.enviadoEm } });
       }
       return json({ ok: true });
+    }
+    // Links externos (Google Drive, OneDrive, YouTube...): guarda só o endereço
+    m = caminho.match(/^\/api\/links\/([A-Za-z0-9_-]+)$/);
+    if (m && metodo === "POST") {
+      const t = await st.get("treinamentos/" + m[1], { type: "json" });
+      if (!t) return erro("Treinamento não encontrado.", 404);
+      if (!podeAlterar(t)) return erro("Só quem cadastrou este treinamento (ou o administrador) pode anexar links.", 403);
+      const b = await req.json(); let u;
+      try { u = new URL(String(b.url || "").trim()); } catch { return erro("Endereço inválido. Copie o link completo, começando com https://"); }
+      if (!/^https?:$/.test(u.protocol)) return erro("O link precisa começar com http:// ou https://");
+      const mat = { id: crypto.randomBytes(8).toString("hex"), nome: txt(b.nome, 200).trim() || u.hostname, tipo: "link", url: u.toString().slice(0, 2000),
+        tamanho: 0, enviadoEm: new Date().toISOString(), enviadoPor: user.login };
+      t.materiais = [...(t.materiais || []), mat];
+      await st.setJSON("treinamentos/" + m[1], t);
+      return json({ material: { id: mat.id, nome: mat.nome, tipo: mat.tipo, tamanho: 0, enviadoEm: mat.enviadoEm, url: mat.url } });
     }
     m = caminho.match(/^\/api\/materiais\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
     if (m && metodo === "DELETE") {

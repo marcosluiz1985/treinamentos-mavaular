@@ -173,6 +173,8 @@ textarea{min-height:90px;resize:vertical}
 .modal-sm{max-width:420px}
 .form-erro{color:var(--bad);font-size:14px;margin:10px 0 0}
 /* Materiais */
+.ext-link{background:var(--hi)!important}
+.link-form{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:14px;border-radius:var(--r);background:var(--surface-2)}
 .mat{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .mat-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .mat-list li{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface-2);border-radius:var(--r)}
@@ -267,7 +269,7 @@ function novoId(){ const a=new Uint8Array(10); crypto.getRandomValues(a); return
 
 /* ---------- navegação ---------- */
 function go(view, id){
-  S.view=view; S.detailId=id||null; S.confirmDel=false; S.confirmMat=null;
+  S.view=view; S.detailId=id||null; S.confirmDel=false; S.confirmMat=null; S.linkForm=false;
   try{ location.hash = view==="detalhe" ? "t-"+id : view; }catch(e){}
   render(); window.scrollTo(0,0);
 }
@@ -411,15 +413,30 @@ function viewMateriais(t){
   const ms=t.materiais||[]; const up=podeEditar(t);
   return `<div class="mat"><h3>Materiais do treinamento</h3>
     <p class="note" style="margin:4px 0 10px">Slides, apostilas e vídeos para os participantes baixarem.</p>
-    ${ms.length?`<ul class="mat-list">${ms.map((m,i)=>`<li><span class="ext">${esc(extOf(m.nome))}</span><div class="mi"><div class="mn">${esc(m.nome)}</div><div class="note">${fmtSize(m.tamanho||0)} · enviado em ${fmtDate((m.enviadoEm||"").slice(0,10))}</div></div>
+    ${ms.length?`<ul class="mat-list">${ms.map((m,i)=>m.url?`<li><span class="ext ext-link">LINK</span><div class="mi"><div class="mn">${esc(m.nome)}</div><div class="note">${esc(dominio(m.url))} · incluído em ${fmtDate((m.enviadoEm||"").slice(0,10))}</div></div>
+      <a class="btn" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">Abrir</a>${up?`<button class="iconbtn" data-rmm="${i}" aria-label="Remover ${esc(m.nome)}">×</button>`:""}</li>`:`<li><span class="ext">${esc(extOf(m.nome))}</span><div class="mi"><div class="mn">${esc(m.nome)}</div><div class="note">${fmtSize(m.tamanho||0)} · enviado em ${fmtDate((m.enviadoEm||"").slice(0,10))}</div></div>
       <a class="btn" href="/api/materiais/${encodeURIComponent(t.id)}/${encodeURIComponent(m.id)}">Baixar</a>${up?`<button class="iconbtn" data-rmm="${i}" aria-label="Remover ${esc(m.nome)}">×</button>`:""}</li>`).join("")}</ul>`:`<p class="empty" style="padding:6px 0">Nenhum material anexado ainda.</p>`}
     ${S.confirmMat!=null?`<div class="confirm"><span>Remover “${esc((ms[S.confirmMat]||{}).nome)}”?</span><button class="btn danger" data-act="mat-sim">Remover</button><button class="btn" data-act="mat-nao">Cancelar</button></div>`:""}
-    ${up?`<div class="addrow"><label class="btn" for="mat-file">+ Anexar arquivos</label><input type="file" id="mat-file" multiple hidden><span class="note">PowerPoint, PDF, Word, Excel, imagens e vídeos de até 20 MB cada.</span></div>`:""}
+    ${up?`<div class="addrow"><label class="btn" for="mat-file">+ Anexar arquivos</label><input type="file" id="mat-file" multiple hidden><button class="btn" type="button" data-act="link-abrir">+ Anexar link</button><span class="note">Arquivos de até 20 MB cada. Para vídeos e arquivos maiores, use um link do Google Drive, OneDrive ou YouTube.</span></div>
+    ${S.linkForm?`<form class="link-form" id="link-form">
+      <div class="field"><label for="lk-url">Endereço do link</label><input type="url" id="lk-url" required placeholder="https://drive.google.com/…" autocomplete="off"></div>
+      <div class="field"><label for="lk-nome">Nome que vai aparecer</label><input type="text" id="lk-nome" placeholder="Ex.: Vídeo do treinamento NR-12"></div>
+      <p class="note" style="margin:0">No Drive ou OneDrive, compartilhe o arquivo como “Qualquer pessoa com o link” para que todos consigam abrir.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit">Incluir link</button><button class="btn" type="button" data-act="link-fechar">Cancelar</button></div>
+    </form>`:""}`:""}
     <p class="note" id="mat-msg" hidden></p>
   </div>`;
 }
 const PARTE=3.5*1024*1024;
 const TIPOS={pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation",ppt:"application/vnd.ms-powerpoint",ppsx:"application/vnd.openxmlformats-officedocument.presentationml.slideshow",pdf:"application/pdf",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",doc:"application/msword",xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",xls:"application/vnd.ms-excel",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",webp:"image/webp",gif:"image/gif",mp4:"video/mp4",webm:"video/webm",mov:"video/quicktime",txt:"text/plain",csv:"text/csv",zip:"application/zip"};
+function dominio(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return ""; } }
+async function incluirLink(){
+  const t=cur(); if(!t||!podeEditar(t)) return;
+  const url=$("#lk-url").value.trim(), nome=$("#lk-nome").value.trim();
+  try{ const d=await api("POST","/api/links/"+encodeURIComponent(t.id),{url,nome}); const x=cur(); if(x) x.materiais=[...(x.materiais||[]),d.material]; S.linkForm=false; render(); toast("Link incluído"); }
+  catch(e){ matMsg(e.msg); }
+}
+document.addEventListener("submit",e=>{ if(e.target.id==="link-form"){ e.preventDefault(); incluirLink(); } });
 function matMsg(t){ const el=$("#mat-msg"); if(el){ el.hidden=!t; el.textContent=t||""; } }
 async function anexarMateriais(files){
   const t=cur(); if(!t||!podeEditar(t)) return; let ok=0; const erros=[];
@@ -699,6 +716,8 @@ function bind(){
       else if(act==="lote") importLote();
       else if(act==="mat-sim") confirmarRemocao();
       else if(act==="entrar") abrirLogin();
+      else if(act==="link-abrir"){ S.linkForm=true; render(); const i=$("#lk-url"); if(i) i.focus(); }
+      else if(act==="link-fechar"){ S.linkForm=false; render(); }
       else if(act==="assinar") abrirAssinatura();
       else if(act==="mat-nao"){S.confirmMat=null;render();}
       return;
@@ -814,10 +833,12 @@ function viewUsuarios(){
   </section>`;
 }
 function viewArmazenamento(){
-  const linhas=S.trainings.map(t=>({t,n:(t.materiais||[]).length,b:(t.materiais||[]).reduce((a,m)=>a+(m.tamanho||0),0)})).filter(x=>x.n).sort((a,b)=>b.b-a.b);
+  const arqs=t=>(t.materiais||[]).filter(m=>!m.url);
+  const nLinks=S.trainings.reduce((a,t)=>a+(t.materiais||[]).filter(m=>m.url).length,0);
+  const linhas=S.trainings.map(t=>({t,n:arqs(t).length,b:arqs(t).reduce((a,m)=>a+(m.tamanho||0),0)})).filter(x=>x.n).sort((a,b)=>b.b-a.b);
   const total=linhas.reduce((a,x)=>a+x.b,0), arquivos=linhas.reduce((a,x)=>a+x.n,0);
   const mb=b=>(b/1048576).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})+" MB";
-  const maior=S.trainings.flatMap(t=>(t.materiais||[]).map(m=>({m,t}))).sort((a,b)=>(b.m.tamanho||0)-(a.m.tamanho||0))[0];
+  const maior=S.trainings.flatMap(t=>arqs(t).map(m=>({m,t}))).sort((a,b)=>(b.m.tamanho||0)-(a.m.tamanho||0))[0];
   const max=Math.max(1,...linhas.map(x=>x.b));
   return `<div class="card" style="margin-top:20px"><h3>Armazenamento dos anexos</h3>
     <div class="kpis" style="margin-top:12px">
@@ -829,7 +850,7 @@ function viewArmazenamento(){
     ${linhas.length?`<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Treinamento</th><th>Data</th><th class="num">Arquivos</th><th class="num">Tamanho</th><th style="width:30%"></th></tr></thead><tbody>
       ${linhas.map(x=>`<tr style="cursor:pointer" data-open="${esc(x.t.id)}"><td>${esc(x.t.nome)}</td><td style="white-space:nowrap">${fmtDate(x.t.data)}</td><td class="num">${x.n}</td><td class="num">${mb(x.b)}</td><td><div class="bar" style="margin:0"><i class="p" style="width:${x.b/max*100}%;background:var(--accent)"></i></div></td></tr>`).join("")}
     </tbody></table></div>`:`<p class="empty" style="padding-left:0">Nenhum anexo enviado ainda.</p>`}
-    <p class="note">Para liberar espaço, abra o treinamento e remova os anexos que não forem mais necessários.</p>
+    <p class="note">Para liberar espaço, abra o treinamento e remova os anexos que não forem mais necessários.${nLinks?` Os ${nLinks} link(s) externo(s) não ocupam espaço aqui.`:""}</p>
   </div>`;
 }
 function sugerirLogin(nome){
