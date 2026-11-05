@@ -794,8 +794,10 @@ function viewUsuarios(){
   return `<section class="view"><div class="detail">
     <div class="card"><h3>Novo usuário</h3><p class="note">Cada pessoa entra com o próprio usuário e senha. Ela poderá cadastrar treinamentos e alterar só os que cadastrou. Administradores alteram tudo e gerenciam usuários.</p>
       <form id="u-form" class="form-grid" style="margin-top:10px">
-        <div class="field"><label for="u-nome">Nome</label><input type="text" id="u-nome" required placeholder="Ex.: Ana Paula (RH)"></div>
-        <div class="field"><label for="u-login">Usuário</label><input type="text" id="u-login" required autocapitalize="none" placeholder="Ex.: ana.rh"></div>
+        <div class="field full"><label for="u-nome">Nome</label><input type="text" id="u-nome" required list="dl-colab-u" autocomplete="off" placeholder="Digite para buscar no cadastro de colaboradores">
+          <datalist id="dl-colab-u">${[...S.people].sort((a,b)=>a.nome.localeCompare(b.nome)).map(p=>`<option value="${esc(p.nome)}">${esc(p.setor||"")}</option>`).join("")}</datalist>
+          <span class="note" id="u-dica">${S.people.length?`Comece a digitar e escolha na lista (${S.people.length} colaboradores). Também dá para digitar um nome que não está no cadastro.`:"O cadastro de colaboradores está vazio; digite o nome."}</span></div>
+        <div class="field"><label for="u-login">Usuário</label><input type="text" id="u-login" required autocapitalize="none" placeholder="Ex.: ana.silva"></div>
         <div class="field"><label for="u-senha">Senha inicial (mínimo 8)</label><input type="text" id="u-senha" required minlength="8" autocomplete="off"></div>
         <div class="field"><label for="u-admin">Tipo</label><select id="u-admin"><option value="">Usuário (altera só o que cadastrar)</option><option value="1">Administrador (altera tudo)</option></select></div>
         <div class="full"><button class="btn primary" type="submit">Criar usuário</button></div>
@@ -809,6 +811,20 @@ function viewUsuarios(){
       ${S.uReset?`<form class="confirm" id="ures-form" style="border-color:var(--accent);background:var(--accent-soft)"><span>Nova senha para “${esc(S.uReset)}”:</span><input type="text" id="ures-senha" minlength="8" required autocomplete="off" style="width:auto;flex:1 1 140px"><button class="btn primary" type="submit">Salvar</button><button class="btn" type="button" data-act="ures-nao">Cancelar</button></form>`:""}
     </div></div></section>`;
 }
+function sugerirLogin(nome){
+  const partes=String(nome||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/).filter(Boolean).filter(x=>!["de","da","do","das","dos","e"].includes(x));
+  if(!partes.length) return "";
+  const base=partes.length>1?partes[0]+"."+partes[partes.length-1]:partes[0];
+  const usados=new Set((S.usuarios||[]).map(u=>u.login)); let l=base, n=2; while(usados.has(l)) l=base+(n++);
+  return l;
+}
+document.addEventListener("input",e=>{
+  if(e.target.id!=="u-nome") return;
+  const nome=e.target.value.trim(); const p=S.people.find(x=>x.nome.toUpperCase()===nome.toUpperCase());
+  const dica=$("#u-dica"); if(dica) dica.textContent = p ? `Colaborador do cadastro · setor ${p.setor||"—"}` : (S.people.length?"Comece a digitar e escolha na lista. Também dá para digitar um nome que não está no cadastro.":"");
+  const lg=$("#u-login"); if(lg && (!lg.value || lg.dataset.auto==="1")){ lg.value=sugerirLogin(nome); lg.dataset.auto="1"; }
+});
+document.addEventListener("input",e=>{ if(e.target.id==="u-login") e.target.dataset.auto="0"; });
 document.addEventListener("submit",async e=>{
   if(e.target.id==="u-form"){ e.preventDefault();
     try{ await api("POST","/api/usuarios",{nome:$("#u-nome").value,login:$("#u-login").value,senha:$("#u-senha").value,admin:!!$("#u-admin").value}); toast("Usuário criado"); S.usuariosOk=false; render(); }catch(x){ toast(x.msg); } }
