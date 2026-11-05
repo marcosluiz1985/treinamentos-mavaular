@@ -809,7 +809,28 @@ function viewUsuarios(){
       </tbody></table></div>
       ${S.uConfirm?`<div class="confirm"><span>Excluir o usuário “${esc(S.uConfirm)}”? Os treinamentos que ele cadastrou continuam no sistema.</span><button class="btn danger" data-act="udel-sim">Excluir</button><button class="btn" data-act="udel-nao">Cancelar</button></div>`:""}
       ${S.uReset?`<form class="confirm" id="ures-form" style="border-color:var(--accent);background:var(--accent-soft)"><span>Nova senha para “${esc(S.uReset)}”:</span><input type="text" id="ures-senha" minlength="8" required autocomplete="off" style="width:auto;flex:1 1 140px"><button class="btn primary" type="submit">Salvar</button><button class="btn" type="button" data-act="ures-nao">Cancelar</button></form>`:""}
-    </div></div></section>`;
+    </div></div>
+    ${viewArmazenamento()}
+  </section>`;
+}
+function viewArmazenamento(){
+  const linhas=S.trainings.map(t=>({t,n:(t.materiais||[]).length,b:(t.materiais||[]).reduce((a,m)=>a+(m.tamanho||0),0)})).filter(x=>x.n).sort((a,b)=>b.b-a.b);
+  const total=linhas.reduce((a,x)=>a+x.b,0), arquivos=linhas.reduce((a,x)=>a+x.n,0);
+  const mb=b=>(b/1048576).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})+" MB";
+  const maior=S.trainings.flatMap(t=>(t.materiais||[]).map(m=>({m,t}))).sort((a,b)=>(b.m.tamanho||0)-(a.m.tamanho||0))[0];
+  const max=Math.max(1,...linhas.map(x=>x.b));
+  return `<div class="card" style="margin-top:20px"><h3>Armazenamento dos anexos</h3>
+    <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><span class="label">Espaço usado</span><b>${mb(total)}</b><span class="sub">soma de todos os anexos</span></div>
+      <div class="kpi"><span class="label">Arquivos</span><b>${arquivos}</b><span class="sub">em ${linhas.length} treinamento(s)</span></div>
+      <div class="kpi"><span class="label">Média por arquivo</span><b>${arquivos?mb(total/arquivos):"—"}</b><span class="sub">limite de 20 MB por arquivo</span></div>
+      <div class="kpi"><span class="label">Maior arquivo</span><b>${maior?mb(maior.m.tamanho||0):"—"}</b><span class="sub">${maior?esc(maior.m.nome):"nenhum anexo"}</span></div>
+    </div>
+    ${linhas.length?`<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Treinamento</th><th>Data</th><th class="num">Arquivos</th><th class="num">Tamanho</th><th style="width:30%"></th></tr></thead><tbody>
+      ${linhas.map(x=>`<tr style="cursor:pointer" data-open="${esc(x.t.id)}"><td>${esc(x.t.nome)}</td><td style="white-space:nowrap">${fmtDate(x.t.data)}</td><td class="num">${x.n}</td><td class="num">${mb(x.b)}</td><td><div class="bar" style="margin:0"><i class="p" style="width:${x.b/max*100}%;background:var(--accent)"></i></div></td></tr>`).join("")}
+    </tbody></table></div>`:`<p class="empty" style="padding-left:0">Nenhum anexo enviado ainda.</p>`}
+    <p class="note">Para liberar espaço, abra o treinamento e remova os anexos que não forem mais necessários.</p>
+  </div>`;
 }
 function sugerirLogin(nome){
   const partes=String(nome||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/).filter(Boolean).filter(x=>!["de","da","do","das","dos","e"].includes(x));
