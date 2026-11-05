@@ -18,16 +18,16 @@ END:STANDARD
 END:VTIMEZONE
 BEGIN:VEVENT
 UID:2q7vnc87j7pmyel36yfu@treinamentos-mavaular
-DTSTAMP:20261104T170601Z
+DTSTAMP:20261105T095640Z
 SUMMARY:Treinamento: Treinamento Feedback
 DTSTART;TZID=America/Sao_Paulo:20261110T163000
 DTEND;TZID=America/Sao_Paulo:20261110T173000
 LOCATION:Sala de reuniões da Mavaular Móveis
-DESCRIPTION:Assunto: Feedback aos colaboradores e devolutiva e colaborador
- es em período de experiência.\nPúblico: Gestores da produção\nFacili
- tador: Marcos Luiz - Psicólogo/Analista de RH\nCarga horária: 1 hora\nD
- etalhes e materiais: https://treinamentos-mavaular.netlify.app/#t-2q7vnc8
- 7j7pmyel36yfu
+DESCRIPTION:Assunto: Feedback aos colaboradores já efetivados e devolutiv
+ a a colaboradores em experiência.\nPúblico: Gestores da produção\nFac
+ ilitador: Marcos Luiz - Psicólogo/Analista de RH\nCarga horária: 1 hora
+ \nDetalhes e materiais: https://treinamentos-mavaular.netlify.app/#t-2q7v
+ nc87j7pmyel36yfu
 URL:https://treinamentos-mavaular.netlify.app/#t-2q7vnc87j7pmyel36yfu
 BEGIN:VALARM
 ACTION:DISPLAY
@@ -42,7 +42,7 @@ END:VALARM
 END:VEVENT
 BEGIN:VEVENT
 UID:qdaqecb3yxkxevd4god4@treinamentos-mavaular
-DTSTAMP:20261104T170601Z
+DTSTAMP:20261105T095640Z
 SUMMARY:Treinamento: De colega a lider
 DTSTART;TZID=America/Sao_Paulo:20261117T163000
 DTEND;TZID=America/Sao_Paulo:20261117T173000
@@ -65,7 +65,7 @@ END:VALARM
 END:VEVENT
 BEGIN:VEVENT
 UID:t-2026-10-21-entrevistas@treinamentos-mavaular
-DTSTAMP:20261104T170601Z
+DTSTAMP:20261105T095640Z
 SUMMARY:Treinamento: Processo de entrevistas
 DTSTART;VALUE=DATE:20261021
 DTEND;VALUE=DATE:20261022
