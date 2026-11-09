@@ -100,7 +100,7 @@ function normalizarTreinamento(b) {
     publico: txt(b.publico, 200), facilitador: txt(b.facilitador, 200), conteudo: txt(b.conteudo, 4000),
     participantes: (Array.isArray(b.participantes) ? b.participantes : []).slice(0, 500).map((p) => ({
       nome: txt(p.nome, 120), setor: txt(p.setor, 80), presenca: p.presenca === "presente" || p.presenca === "falta" ? p.presenca : null,
-    })),
+    })).sort((a, b) => a.nome.localeCompare(b.nome, "pt", { sensitivity: "base" })),
   };
 }
 

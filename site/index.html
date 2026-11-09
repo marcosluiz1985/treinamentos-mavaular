@@ -173,6 +173,10 @@ textarea{min-height:90px;resize:vertical}
 .modal-sm{max-width:420px}
 .form-erro{color:var(--bad);font-size:14px;margin:10px 0 0}
 /* Materiais */
+.mt-setores{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.mt-chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.mt-chip.on{background:var(--accent);color:#fff}
+.link-trein{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
 .ext-link{background:var(--hi)!important}
 .link-form{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:14px;border-radius:var(--r);background:var(--surface-2)}
 .mat{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
@@ -203,6 +207,7 @@ label.btn{cursor:pointer}
 </div></div>
 <div class="tabbar"><nav class="tabs" aria-label="Seções">
   <button id="tab-agenda" data-view="agenda">Agenda</button>
+  <button id="tab-materiais" data-view="materiais">Materiais</button>
   <button id="tab-indicadores" data-view="indicadores">Indicadores</button>
   <button id="tab-colaboradores" data-view="colaboradores" hidden>Colaboradores</button>
   <button id="tab-usuarios" data-view="usuarios" hidden>Usuários</button>
@@ -276,7 +281,7 @@ function go(view, id){
 function fromHash(){
   const h=(location.hash||"").slice(1);
   if (h.startsWith("t-")){ S.view="detalhe"; S.detailId=h.slice(2); }
-  else if (["agenda","indicadores","colaboradores","usuarios"].includes(h)) S.view=h;
+  else if (["agenda","materiais","indicadores","colaboradores","usuarios"].includes(h)) S.view=h;
 }
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.view)));
 window.addEventListener("hashchange",()=>{fromHash();render();});
@@ -293,6 +298,7 @@ function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-current", String(b.dataset.view===S.view || (S.view==="detalhe"&&b.dataset.view==="agenda"))));
   const app=$("#app");
   if (S.view==="indicadores") app.innerHTML=viewInd();
+  else if (S.view==="materiais") app.innerHTML=viewMateriaisTodos();
   else if (S.view==="colaboradores") app.innerHTML=S.eu?viewPeople():viewPrecisaLogin();
   else if (S.view==="usuarios") app.innerHTML=S.isAdmin?viewUsuarios():viewPrecisaLogin();
   else if (S.view==="detalhe"){ const t=S.trainings.find(x=>x.id===S.detailId); app.innerHTML = t ? viewDetail(t) : (S.loaded.t ? `<section class="view"><p class="empty">Treinamento não encontrado.</p><button class="btn" data-act="go-agenda">Voltar à agenda</button></section>` : `<section class="view"><p class="empty">Carregando…</p></section>`); }
@@ -409,6 +415,46 @@ function viewDetail(t){
 
 const fmtSize=b=>b>=1048576?(b/1048576).toLocaleString("pt-BR",{maximumFractionDigits:1})+" MB":Math.max(1,Math.round(b/1024))+" KB";
 const extOf=n=>(String(n).split(".").pop()||"").toUpperCase().slice(0,4);
+/* ---------- aba Materiais ---------- */
+function setoresDe(t){ return [...new Set((t.participantes||[]).map(p=>p.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt")); }
+function viewMateriaisTodos(){
+  const f=S.fMat||(S.fMat={setor:"",busca:"",tipo:""});
+  const todos=S.trainings.flatMap(t=>(t.materiais||[]).map(m=>({m,t,setores:setoresDe(t)})));
+  const setores=[...new Set(todos.flatMap(x=>x.setores))].sort((a,b)=>a.localeCompare(b,"pt"));
+  const fold=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const q=fold(f.busca);
+  const lista=todos.filter(x=>(!f.setor||x.setores.includes(f.setor))
+      && (!f.tipo||(f.tipo==="link"?!!x.m.url:!x.m.url))
+      && (!q||fold(x.m.nome+" "+x.t.nome+" "+(x.t.assunto||"")+" "+(x.t.publico||"")).includes(q)))
+    .sort((a,b)=>(b.t.data||"").localeCompare(a.t.data||"")||porNome(a.m,b.m));
+  const item=({m,t,setores})=>`<li class="mt-item">
+      <span class="ext ${m.url?"ext-link":""}">${m.url?"LINK":esc(extOf(m.nome))}</span>
+      <div class="mi"><div class="mn">${esc(m.nome)}</div>
+        <div class="note"><button class="link-trein" data-open="${esc(t.id)}">${esc(t.nome)}</button> · ${fmtDate(t.data)}${m.url?" · "+esc(dominio(m.url)):" · "+fmtSize(m.tamanho||0)}</div>
+        ${setores.length?`<div class="mt-setores">${setores.map(s=>`<span class="mt-chip ${s===f.setor?"on":""}">${esc(s)}</span>`).join("")}</div>`:(t.publico?`<div class="note">Público: ${esc(t.publico)}</div>`:"")}
+      </div>
+      ${m.url?`<a class="btn" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">Abrir</a>`:`<a class="btn" href="/api/materiais/${encodeURIComponent(t.id)}/${encodeURIComponent(m.id)}">Baixar</a>`}
+    </li>`;
+  return `<section class="view">
+    <div class="filters">
+      <div class="field"><label for="fm-setor">Setor</label><select id="fm-setor"><option value="">Todos os setores</option>${setores.map(s=>`<option ${s===f.setor?"selected":""}>${esc(s)}</option>`).join("")}</select></div>
+      <div class="field"><label for="fm-tipo">Tipo</label><select id="fm-tipo"><option value="">Arquivos e links</option><option value="arq" ${f.tipo==="arq"?"selected":""}>Só arquivos</option><option value="link" ${f.tipo==="link"?"selected":""}>Só links</option></select></div>
+      <div class="field" style="flex:1 1 220px"><label for="fm-busca">Buscar</label><input type="text" id="fm-busca" value="${esc(f.busca)}" placeholder="Nome do material ou do treinamento"></div>
+    </div>
+    <div class="card">
+      <h3>${lista.length} material(is)${f.setor?` para o setor ${esc(f.setor)}`:""}</h3>
+      <p class="note" style="margin:4px 0 12px">O setor vem dos participantes convocados em cada treinamento.${f.setor?" Treinamentos sem participantes definidos aparecem só em “Todos os setores”.":""}</p>
+      ${lista.length?`<ul class="mat-list">${lista.map(item).join("")}</ul>`:`<p class="empty" style="padding-left:0">${todos.length?"Nenhum material com esse filtro.":"Nenhum material anexado ainda. Os slides e links incluídos nos treinamentos aparecem aqui."}</p>`}
+    </div>
+  </section>`;
+}
+document.addEventListener("change",e=>{
+  if(e.target.id==="fm-setor"||e.target.id==="fm-tipo"){ S.fMat=S.fMat||{}; S.fMat.setor=$("#fm-setor").value; S.fMat.tipo=$("#fm-tipo").value; render(); }
+});
+document.addEventListener("input",e=>{
+  if(e.target.id!=="fm-busca") return; S.fMat=S.fMat||{}; S.fMat.busca=e.target.value;
+  clearTimeout(S._tb); S._tb=setTimeout(()=>{ const pos=e.target.selectionStart; render(); const i=$("#fm-busca"); if(i){ i.focus(); try{i.setSelectionRange(pos,pos);}catch(_){} } },200);
+});
 function viewMateriais(t){
   const ms=t.materiais||[]; const up=podeEditar(t);
   return `<div class="mat"><h3>Materiais do treinamento</h3>
@@ -645,7 +691,9 @@ function openForm(t, presetDate){
     close(); const [yy,mm]=body.data.split("-"); S.month={y:+yy,m:+mm-1}; go("detalhe",id);
   });
 }
-function upsertLocal(t){ const i=S.trainings.findIndex(x=>x.id===t.id); if(i>=0)S.trainings[i]=t; else S.trainings.push(t); }
+const porNome=(a,b)=>String(a.nome||"").localeCompare(String(b.nome||""),"pt",{sensitivity:"base"});
+function ordenarParticipantes(t){ if(t&&Array.isArray(t.participantes)) t.participantes.sort(porNome); return t; }
+function upsertLocal(t){ ordenarParticipantes(t); const i=S.trainings.findIndex(x=>x.id===t.id); if(i>=0)S.trainings[i]=t; else S.trainings.push(t); }
 function cur(){ return S.trainings.find(x=>x.id===S.detailId); }
 function mutate(fn){ const t=cur(); if(!t) return; const c=JSON.parse(JSON.stringify(t)); c.participantes=c.participantes||[]; fn(c); upsertLocal(c); render(); saveTraining(c); }
 
@@ -759,7 +807,7 @@ async function carregar(){
   try{
     const d=await api("GET","/api/dados");
     S.eu=d.eu; S.configurado=d.configurado!==false;
-    S.trainings=(d.treinamentos||[]).map(t=>({...t,participantes:t.participantes||[]}));
+    S.trainings=(d.treinamentos||[]).map(t=>ordenarParticipantes({...t,participantes:t.participantes||[]}));
     const c=d.colaboradores||{}; S.people=(c.lista||[]).map(p=>({...p})); S.peopleOrigem=c.origem||""; S.peopleData=c.atualizadoEm||"";
     S.loaded={t:true,p:true}; banner("");
   }catch(e){ S.loaded={t:true,p:true}; banner(e.msg||"Não foi possível carregar os treinamentos."); }
