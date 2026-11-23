@@ -104,6 +104,41 @@ function normalizarTreinamento(b) {
   };
 }
 
+// ---------- feriados e bloqueios do calendário ----------
+function pascoa(y){ const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,mm=Math.floor((a+11*h+22*l)/451),mes=Math.floor((h+l-7*mm+114)/31),dia=((h+l-7*mm+114)%31)+1; return Date.UTC(y,mes-1,dia); }
+function feriadosAno(y){
+  const p=pascoa(y), mais=n=>new Date(p+n*864e5).toISOString().slice(0,10);
+  return [
+    [`${y}-01-01`,"Confraternização Universal","nacional"],
+    [mais(-48),"Carnaval","facultativo"],[mais(-47),"Carnaval","facultativo"],[mais(-46),"Quarta-feira de Cinzas","facultativo"],
+    [mais(-2),"Sexta-feira Santa","nacional"],
+    [`${y}-04-21`,"Tiradentes","nacional"],[`${y}-05-01`,"Dia do Trabalho","nacional"],
+    [mais(60),"Corpus Christi","facultativo"],
+    [`${y}-09-07`,"Independência do Brasil","nacional"],[`${y}-10-12`,"Nossa Senhora Aparecida","nacional"],
+    [`${y}-11-02`,"Finados","nacional"],[`${y}-11-15`,"Proclamação da República","nacional"],
+    [`${y}-11-20`,"Consciência Negra","nacional"],[`${y}-12-25`,"Natal","nacional"],
+  ].map(([data,nome,tipo])=>({data,nome,tipo}));
+}
+// devolve o que acontece no dia: [{nome, tipo, bloqueia}]
+function infoDia(iso, bloqueios){
+  const y=+iso.slice(0,4), out=[];
+  for(const f of feriadosAno(y)) if(f.data===iso) out.push({nome:f.nome,tipo:f.tipo,bloqueia:f.tipo==="nacional"});
+  for(const b of (bloqueios||[])){
+    let ini=b.inicio, fim=b.fim||b.inicio;
+    if(b.anual){ ini=y+ini.slice(4); fim=y+fim.slice(4); if(fim<ini) fim=(y+1)+fim.slice(4); }
+    if(iso>=ini && iso<=fim) out.push({nome:b.nome,tipo:b.tipo||"municipal",bloqueia:true,id:b.id});
+  }
+  return out;
+}
+
+const BLOQUEIOS_PADRAO = { lista: [{ id: "ferias-2026", nome: "Férias coletivas", tipo: "ferias", inicio: "2026-12-15", fim: "2027-01-03", anual: false }] };
+async function bloqueios() {
+  const st = loja(); let b = await st.get("calendario/bloqueios", { type: "json" });
+  if (!b) { b = BLOQUEIOS_PADRAO; await st.setJSON("calendario/bloqueios", b, { onlyIfNew: true }); }
+  return b;
+}
+const dataIso = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+
 // ---------- agenda (.ics) ----------
 const icsEsc = (t) => String(t || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r/g, "").replace(/\n/g, "\\n");
 function dobrar(l) {
@@ -183,12 +218,13 @@ export default async (req) => {
     const sessao = user ? { login: user.login, nome: user.nome, admin: !!user.admin } : null;
 
     if (caminho === "/api/dados" && metodo === "GET") {
-      const [ts, cad, us] = await Promise.all([listarTreinamentos(), st.get("cadastro/colaboradores", { type: "json" }), listarUsuarios()]);
+      const [ts, cad, us, blq] = await Promise.all([listarTreinamentos(), st.get("cadastro/colaboradores", { type: "json" }), listarUsuarios(), bloqueios()]);
       const nomes = Object.fromEntries(us.map((u) => [u.login, u.nome]));
       return json({
         eu: sessao, configurado: us.length > 0,
         treinamentos: ts.map((t) => ({ ...formaPublica(t, !!user), autorNome: nomes[t.autor] || "" })),
         colaboradores: user ? (cad || { lista: [] }) : { lista: [] },
+        bloqueios: blq.lista || [],
       });
     }
 
@@ -283,6 +319,19 @@ export default async (req) => {
       }
     }
 
+    // Feriados municipais, férias coletivas e outros bloqueios (só administrador)
+    if (caminho === "/api/bloqueios" && metodo === "PUT") {
+      if (!user.admin) return erro("Só o administrador altera feriados e recessos.", 403);
+      const b = await req.json();
+      const lista = (Array.isArray(b.lista) ? b.lista : []).slice(0, 300).map((x) => ({
+        id: txt(x.id, 60) || crypto.randomBytes(6).toString("hex"), nome: txt(x.nome, 120).trim(),
+        tipo: ["municipal", "ferias", "outro"].includes(x.tipo) ? x.tipo : "municipal",
+        inicio: x.inicio, fim: x.fim && x.fim >= x.inicio ? x.fim : "", anual: !!x.anual,
+      })).filter((x) => x.nome && dataIso(x.inicio) && (!x.fim || dataIso(x.fim)));
+      await st.setJSON("calendario/bloqueios", { lista });
+      return json({ lista });
+    }
+
     // Cadastro de colaboradores (só administrador)
     if (caminho === "/api/colaboradores" && metodo === "PUT") {
       if (!user.admin) return erro("Só o administrador altera o cadastro de colaboradores.", 403);
@@ -300,6 +349,10 @@ export default async (req) => {
       if (atual && !podeAlterar(atual)) return erro("Só quem cadastrou este treinamento (ou o administrador) pode alterá-lo.", 403);
       const b = await req.json(); const novo = normalizarTreinamento(b);
       if (!novo.nome || !novo.data) return erro("Informe nome e data do treinamento.");
+      if (!atual || atual.data !== novo.data) {
+        const motivo = infoDia(novo.data, (await bloqueios()).lista).find((x) => x.bloqueia);
+        if (motivo) return erro(`Não é possível agendar em ${novo.data.split("-").reverse().join("/")}: ${motivo.nome}.`, 409);
+      }
       const t = { id: m[1], ...novo, autor: atual ? atual.autor : user.login, materiais: atual ? atual.materiais || [] : [],
         criadoEm: atual ? atual.criadoEm : new Date().toISOString(), alteradoEm: new Date().toISOString(), alteradoPor: user.login };
       await st.setJSON("treinamentos/" + m[1], t);
